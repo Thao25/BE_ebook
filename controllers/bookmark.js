@@ -42,3 +42,41 @@ exports.getBookmark = async (req, res) => {
     res.status(500).json({ success: false, message: "Lỗi server" });
   }
 };
+exports.deleteBookmark = async (req, res) => {
+  try {
+    const userId = req.user._id;
+    const { bookId } = req.params;
+
+    const result = await Bookmark.findOneAndDelete({
+      user: userId,
+      book: bookId,
+    });
+
+    if (!result) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Bookmark không tồn tại" });
+    }
+
+    res.status(200).json({ success: true, message: "Đã xoá bookmark" });
+  } catch (error) {
+    console.error("Lỗi xoá bookmark:", error);
+    res.status(500).json({ success: false, message: "Lỗi server" });
+  }
+};
+
+exports.getAllBookmarks = async (req, res) => {
+  try {
+    const userId = req.user._id;
+
+    const bookmarks = await Bookmark.find({ user: userId }).populate(
+      "book",
+      "title author"
+    );
+
+    res.status(200).json({ success: true, bookmarks });
+  } catch (error) {
+    console.error("Lỗi lấy danh sách bookmark:", error);
+    res.status(500).json({ success: false, message: "Lỗi server" });
+  }
+};
