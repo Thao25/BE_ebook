@@ -8,6 +8,7 @@ const bookmarkRoutes = require("./routes/bookmark");
 const favoriteRoutes = require("./routes/favorite");
 const commentRoutes = require("./routes/comment");
 const reportRoutes = require("./routes/report");
+const chatRoutes = require("./routes/chat");
 const cors = require("cors");
 const path = require("path");
 const app = express();
@@ -30,9 +31,19 @@ app.use((req, res, next) => {
 io.on("connection", (socket) => {
   console.log("client connected", socket.id);
 
+  // phòng chat riêng cho comment theo từng sách
   socket.on("join-book", (book) => {
     socket.join(book);
     console.log(`📚 Client ${socket.id} đã vào phòng sách ${book}`);
+  });
+
+  // kênh chat chung
+  socket.on("sendMessage", (msg) => {
+    // phát cho toàn bộ client (kênh chung)
+    io.emit("newMessage", {
+      socketId: socket.id,
+      ...msg,
+    });
   });
 
   socket.on("disconnect", () => {
@@ -52,6 +63,7 @@ app.use("/bookmark", bookmarkRoutes);
 app.use("/favorite", favoriteRoutes);
 app.use("/comment", commentRoutes);
 app.use("/report", reportRoutes);
+app.use("/chat", chatRoutes);
 
 const PORT = process.env.PORT || 5000;
 
