@@ -1,0 +1,84 @@
+# Node.js
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Runtime data
+pids/
+*.pid
+*.seed
+*.pid.lock
+
+# Logs
+logs/
+*.log
+
+# Build / output
+dist/
+build/
+coverage/
+*.lcov
+
+# Environment files
+.env
+.env.*
+
+# Dumps and temp test data
+dump/
+dump-test/
+
+# Uploaded files (do NOT track generated/user-uploaded content)
+uploads/
+uploads/avatars/
+uploads/books/
+uploads/documents/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDEs and editors
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+
+# Misc
+*.swp
+*.tmp
+temp/
+tmp/
+
+# Database files
+*.db
+*.sqlite
+
+# Postman collection local exports
+Postman/
+
+# Windows specific
+ehthumbs.db
+
+# Yarn / pnpm lock (optional - keep if you want reproducible installs)
+# Uncomment to ignore lockfiles:
+# yarn.lock
+# package-lock.json
+# pnpm-lock.yaml
+
+# npm cache
+.npm
+
+# dist / build artifacts from editors
+.vscode-test/
+
+# Coverage and test artifacts
+.nyc_output/
+coverage/
+
+# Others
+*.log
+

@@ -1,54 +1,30 @@
-// POST /favorites/toggle/:bookId
-const Favorite = require("../models/favorite");
-const Book = require("../models/book");
+const favoriteService = require("../services/favorite.service");
 
+const handleError = (res, error) =>
+  res
+    .status(error.statusCode || 500)
+    .json({ message: error.message || "Lỗi server" });
+
+// Controller: nhận req/res, gọi favoriteService để toggle trạng thái.
 const toggleFavorite = async (req, res) => {
   try {
-    const userId = req.user._id;
-    const bookId = req.params.bookId;
-
-    // Kiểm tra sách tồn tại không
-    const book = await Book.findById(bookId);
-    if (!book) return res.status(404).json({ message: "Không tìm thấy sách." });
-
-    // Tìm xem đã yêu thích chưa
-    const existingFavorite = await Favorite.findOne({
-      user: userId,
-      book: bookId,
-    });
-
-    if (existingFavorite) {
-      // Nếu đã yêu thích -> Xoá để bỏ yêu thích
-      await Favorite.findByIdAndDelete(existingFavorite._id);
-      return res.status(200).json({
-        success: true,
-        is_favorite: false,
-        message: "Đã bỏ yêu thích.",
-      });
-    } else {
-      // Nếu chưa yêu thích -> Thêm vào
-      await Favorite.create({ user: userId, book: bookId });
-      return res.status(201).json({
-        success: true,
-        is_favorite: true,
-        message: "Đã thêm vào yêu thích.",
-      });
-    }
+    const result = await favoriteService.toggleFavorite(
+      req.user._id,
+      req.params.bookId
+    );
+    const status = result.is_favorite ? 201 : 200;
+    return res.status(status).json(result);
   } catch (error) {
-    console.error("Lỗi toggle yêu thích:", error);
-    res.status(500).json({ message: "Lỗi server." });
+    return handleError(res, error);
   }
 };
 
 const getFavorites = async (req, res) => {
   try {
-    const favorites = await Favorite.find({ user: req.user._id }).populate(
-      "book"
-    );
-    res.status(200).json({ success: true, favorites });
+    const result = await favoriteService.getFavorites(req.user._id);
+    return res.status(200).json(result);
   } catch (error) {
-    console.error("Lỗi khi lấy danh sách yêu thích:", error);
-    res.status(500).json({ message: "Lỗi server." });
+    return handleError(res, error);
   }
 };
 
