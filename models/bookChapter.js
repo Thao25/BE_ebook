@@ -8,6 +8,11 @@ const chapterSchema = new mongoose.Schema(
       required: true,
     },
     title: { type: String, required: true },
+    // Encrypted content fields (AES-256-GCM)
+    ciphertext: { type: String, required: true }, // Base64 encoded encrypted content
+    iv: { type: String, required: true }, // Base64 encoded initialization vector
+    authTag: { type: String, required: true }, // Base64 encoded authentication tag
+    // Legacy field - deprecated, will be removed in future
     content: { type: String },
     chapter_number: { type: Number, required: true },
   },

@@ -14,18 +14,19 @@ const createBook = async (payload, files, chapters = []) => {
   }
 
   const cover = files?.cover_url?.[0];
-  const file = files?.file_url?.[0];
 
+  // KHÔNG lưu file_url (book file) vào Book model.
+  // Chỉ lưu metadata + cover_url (ảnh bìa) + has_chapters.
   const newBook = await Book.create({
     title,
     author,
     description,
     cover_url: cover ? buildPublicUrl("books", cover.filename) : "",
-    file_url: file ? buildPublicUrl("books", file.filename) : "",
     category,
     has_chapters: Array.isArray(chapters) && chapters.length > 0,
   });
 
+  // Lưu các chương đã được mã hóa trực tiếp vào BookChapter
   if (Array.isArray(chapters) && chapters.length) {
     const uniqueMap = new Map();
     chapters.forEach((chapter) => {
@@ -59,7 +60,7 @@ const getChaptersByBook = async (bookId) => {
 
   const chapters = await BookChapter.find({ book: book._id })
     .sort("chapter_number")
-    .select("-content");
+    .select("-content -ciphertext -iv -authTag"); // Không trả encrypted data trong danh sách
 
   return { success: true, chapters };
 };
@@ -73,13 +74,25 @@ const getChapterContent = async ({ bookId, chapter_number }) => {
   const chapter = await BookChapter.findOne({
     book: bookId,
     chapter_number: chapterNumber,
-  });
+  }).select("title chapter_number ciphertext iv authTag"); // Chỉ trả encrypted fields
 
   if (!chapter) {
     throw new AppError(404, "Không tìm thấy chương");
   }
 
-  return { success: true, chapter };
+  // Trả về encrypted payload, không decrypt
+  return {
+    success: true,
+    chapter: {
+      _id: chapter._id,
+      title: chapter.title,
+      chapter_number: chapter.chapter_number,
+      // Encrypted data để frontend decrypt
+      ciphertext: chapter.ciphertext,
+      iv: chapter.iv,
+      authTag: chapter.authTag,
+    },
+  };
 };
 
 const getAllBooks = async () => {
@@ -169,8 +182,8 @@ const deleteBook = async (id) => {
     throw new AppError(404, "Không tìm thấy sách");
   }
 
+  // Chỉ xóa cover image (nếu có). Book file KHÔNG được lưu trên đĩa.
   deleteFileIfExists(book.cover_url);
-  deleteFileIfExists(book.file_url);
 
   await BookChapter.deleteMany({ book: book._id });
   await Book.findByIdAndDelete(book._id);

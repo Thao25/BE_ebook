@@ -1,8 +1,9 @@
-const fs = require("fs");
+const fs = require("fs"); // vẫn dùng cho textract (buffer)
 const path = require("path");
 const pdfParse = require("pdf-parse");
 const mammoth = require("mammoth");
 const textract = require("textract");
+const { encryptChapterContent } = require("../services/chapterEncryption.service");
 
 const extractChapters = async (req, res, next) => {
   try {
@@ -11,21 +12,29 @@ const extractChapters = async (req, res, next) => {
       return res.status(400).json({ message: "Không có file sách (file_url)" });
     }
 
-    const filePath = fileArray[0].path;
-    const ext = path.extname(filePath).toLowerCase();
+    const file = fileArray[0];
+    const originalName = file.originalname || "";
+    const ext = path.extname(originalName).toLowerCase();
+    const buffer = file.buffer;
+
+    if (!buffer) {
+      return res
+        .status(400)
+        .json({ message: "File sách không hợp lệ (thiếu buffer)." });
+    }
+
     let fullText = "";
 
-    // Đọc file
+    // Đọc file trực tiếp từ buffer (KHÔNG dùng file.path)
     if (ext === ".pdf") {
-      const dataBuffer = fs.readFileSync(filePath);
-      const data = await pdfParse(dataBuffer);
+      const data = await pdfParse(buffer);
       fullText = data.text;
     } else if (ext === ".docx") {
-      const result = await mammoth.extractRawText({ path: filePath });
+      const result = await mammoth.extractRawText({ buffer });
       fullText = result.value;
     } else if (ext === ".doc") {
       fullText = await new Promise((resolve, reject) => {
-        textract.fromFileWithPath(filePath, (error, text) => {
+        textract.fromBufferWithName(originalName, buffer, (error, text) => {
           if (error) reject(error);
           else resolve(text);
         });
@@ -48,6 +57,7 @@ const extractChapters = async (req, res, next) => {
     }
 
     const chapters = [];
+    let chapterIndex = 1; // Đảm bảo chapter_number liên tục dù skip một số chương
 
     for (let i = 0; i < matches.length; i++) {
       const start = matches[i].index;
@@ -62,10 +72,44 @@ const extractChapters = async (req, res, next) => {
       const title = lines[0]; // Dòng tiêu đề đầu tiên
       const content = lines.slice(1).join("\n").trim(); // Phần sau
 
+      // Bỏ qua chương không có nội dung
+      if (!content) {
+        continue;
+      }
+
+      // Mã hóa nội dung chương trước khi lưu
+      let encrypted;
+      try {
+        encrypted = encryptChapterContent(content);
+      } catch (e) {
+        console.error("Lỗi mã hóa chương:", e);
+        return res
+          .status(500)
+          .json({ message: "Lỗi mã hóa nội dung chương sách." });
+      }
+
+      // Validate output encryption
+      if (
+        !encrypted ||
+        typeof encrypted.ciphertext !== "string" ||
+        typeof encrypted.iv !== "string" ||
+        typeof encrypted.authTag !== "string" ||
+        !encrypted.ciphertext ||
+        !encrypted.iv ||
+        !encrypted.authTag
+      ) {
+        console.error("Encrypted payload không hợp lệ:", encrypted);
+        return res.status(500).json({
+          message: "Mã hóa chương trả về dữ liệu không hợp lệ.",
+        });
+      }
+
       chapters.push({
-        chapter_number: i + 1,
+        chapter_number: chapterIndex++,
         title,
-        content,
+        ciphertext: encrypted.ciphertext,
+        iv: encrypted.iv,
+        authTag: encrypted.authTag,
       });
     }
 
