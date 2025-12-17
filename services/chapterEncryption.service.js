@@ -1,4 +1,4 @@
-const { encrypt } = require("../utils/crypto");
+const { encryption } = require("../utils/crypto");
 
 /**
  * Chapter Encryption Service
@@ -24,7 +24,7 @@ const encryptChapterContent = (plaintextContent) => {
       : JSON.stringify(plaintextContent);
 
   // Encrypt using AES-256-GCM
-  const encrypted = encrypt(jsonString);
+  const encrypted = encryption(jsonString);
 
   return encrypted;
 };

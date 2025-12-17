@@ -9,6 +9,7 @@ const crypto = require("crypto");
 
 // Lấy secret từ environment variable
 const ENCRYPTION_SECRET = process.env.BOOK_ENCRYPTION_SECRET;
+const BOOK_ENCRYPTION_SECRET = process.env.BOOK_ENCRYPTION_SECRET;
 
 if (!ENCRYPTION_SECRET) {
   throw new Error(
@@ -33,7 +34,7 @@ const getEncryptionKey = () => {
  * @param {string} plaintext - Plain text to encrypt
  * @returns {Object} - { ciphertext: base64, iv: base64, authTag: base64 }
  */
-const encrypt = (plaintext) => {
+const encryption = (plaintext) => {
   if (!plaintext || typeof plaintext !== "string") {
     throw new Error("Plaintext must be a non-empty string");
   }
@@ -54,7 +55,40 @@ const encrypt = (plaintext) => {
   };
 };
 
+function decryptAES256GCM(ciphertextBase64, ivBase64, authTagBase64) {
+  if (!BOOK_ENCRYPTION_SECRET) {
+    throw new Error("BOOK_ENCRYPTION_SECRET is not configured");
+  }
+const getAesKey = () => {
+  // SHA-256 → 32 bytes (AES-256)
+  return crypto
+    .createHash("sha256")
+    .update(ENCRYPTION_SECRET)
+    .digest();
+};
+  const key = getAesKey();
+  const iv = Buffer.from(ivBase64, "base64");
+  const authTag = Buffer.from(authTagBase64, "base64");
+  const ciphertext = Buffer.from(ciphertextBase64, "base64");
+
+  if (iv.length !== 12) {
+    throw new Error("Invalid IV length for AES‑256‑GCM (expected 12 bytes)");
+  }
+
+  try {
+    const decipher = crypto.createDecipheriv("aes-256-gcm", key, iv);
+    decipher.setAuthTag(authTag);
+
+    const decrypted = Buffer.concat([decipher.update(ciphertext), decipher.final()]);
+    return decrypted.toString("utf8");
+  } catch (err) {
+    // Do NOT leak key or ciphertext details in error messages
+    throw new Error("Failed to decrypt chapter content");
+  }
+}
+
 module.exports = {
-  encrypt,
+  encryption,
+  decryptAES256GCM,
 };
 

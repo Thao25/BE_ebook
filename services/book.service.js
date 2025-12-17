@@ -2,6 +2,7 @@ const Book = require("../models/book");
 const BookChapter = require("../models/bookChapter");
 const AppError = require("../utils/error");
 const { deleteFileIfExists } = require("../utils/file");
+const { decryptAES256GCM } = require("../utils/crypto");
 
 const buildPublicUrl = (folder, filename) =>
   `http://localhost:5000/uploads/${folder}/${filename}`;
@@ -15,7 +16,6 @@ const createBook = async (payload, files, chapters = []) => {
 
   const cover = files?.cover_url?.[0];
 
-  // KHÔNG lưu file_url (book file) vào Book model.
   // Chỉ lưu metadata + cover_url (ảnh bìa) + has_chapters.
   const newBook = await Book.create({
     title,
@@ -67,6 +67,7 @@ const getChaptersByBook = async (bookId) => {
 
 const getChapterContent = async ({ bookId, chapter_number }) => {
   const chapterNumber = Number(chapter_number);
+
   if (Number.isNaN(chapterNumber)) {
     throw new AppError(400, "Số chương không hợp lệ");
   }
@@ -74,26 +75,35 @@ const getChapterContent = async ({ bookId, chapter_number }) => {
   const chapter = await BookChapter.findOne({
     book: bookId,
     chapter_number: chapterNumber,
-  }).select("title chapter_number ciphertext iv authTag"); // Chỉ trả encrypted fields
+  }).select("title chapter_number ciphertext iv authTag");
 
   if (!chapter) {
     throw new AppError(404, "Không tìm thấy chương");
   }
 
-  // Trả về encrypted payload, không decrypt
+  let content;
+  try {
+    content = decryptAES256GCM(
+      chapter.ciphertext,
+      chapter.iv,
+      chapter.authTag
+    );
+  } catch (err) {
+    console.error("Lỗi giải mã nội dung chương:", err.message);
+    throw new AppError(500, "Không thể giải mã nội dung chương.");
+  }
+
   return {
     success: true,
     chapter: {
-      _id: chapter._id,
+      id: chapter._id,
       title: chapter.title,
       chapter_number: chapter.chapter_number,
-      // Encrypted data để frontend decrypt
-      ciphertext: chapter.ciphertext,
-      iv: chapter.iv,
-      authTag: chapter.authTag,
+      content, // ✅ PLAINTEXT
     },
   };
 };
+
 
 const getAllBooks = async () => {
   const books = await Book.find({ is_active: true })
