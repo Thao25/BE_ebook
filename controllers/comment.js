@@ -1,125 +1,77 @@
-const Comment = require("../models/comment");
+const commentService = require("../services/comment.service");
+
+const handleError = (res, error) =>
+  res
+    .status(error.statusCode || 500)
+    .json({ message: error.message || "Lỗi server" });
 
 exports.createComment = async (req, res) => {
   try {
-    const { book, rating, comment } = req.body;
-
-    const newComment = await Comment.create({
-      user: req.user._id,
-      book,
-      rating,
-      comment,
-    });
-
-    await newComment.populate("user", "name avatar is_active role");
-
-    req.io.to(book).emit("new-comment", newComment);
-
-    res.status(201).json({ success: true, comment: newComment });
-  } catch (err) {
-    console.error("Lỗi tạo bình luận:", err);
-    res.status(500).json({ message: "Lỗi server khi tạo bình luận." });
+    const io = req.app.get("io") || req.io;
+    const result = await commentService.createComment(req.user._id, req.body, io);
+    return res.status(201).json(result);
+  } catch (error) {
+    return handleError(res, error);
   }
 };
 
 exports.getCommentsByBook = async (req, res) => {
   try {
-    const { bookId } = req.params;
-    const comments = await Comment.find({ book: bookId, is_hidden: false })
-      .populate("user", "name avatar is_active role")
-      .sort({ created_at: -1 });
-
-    res.json({ success: true, comments });
-  } catch (err) {
-    console.error("Lỗi lấy bình luận:", err);
-    res.status(500).json({ message: "Lỗi server khi lấy bình luận." });
+    const result = await commentService.getCommentsByBook(req.params.bookId);
+    return res.status(200).json(result);
+  } catch (error) {
+    return handleError(res, error);
   }
 };
 
 exports.getAllCommentsByBook = async (req, res) => {
   try {
-    const { bookId } = req.params;
-    const comments = await Comment.find({ book: bookId })
-      .populate("user", "name avatar is_active role")
-      .sort({ created_at: -1 });
-
-    res.json({ success: true, comments });
-  } catch (err) {
-    console.error("Lỗi lấy bình luận:", err);
-    res.status(500).json({ message: "Lỗi server khi lấy bình luận." });
+    const result = await commentService.getAllCommentsByBook(req.params.bookId);
+    return res.status(200).json(result);
+  } catch (error) {
+    return handleError(res, error);
   }
 };
+
 exports.updateComment = async (req, res) => {
   try {
-    const { comment, rating } = req.body;
-    const commentId = req.params.id;
-
-    const existingComment = await Comment.findById(commentId);
-    if (!existingComment)
-      return res.status(404).json({ message: "Không tìm thấy bình luận." });
-
-    // Chỉ cho phép chính chủ sửa bình luận
-    if (existingComment.user.toString() !== req.user.id) {
-      return res
-        .status(403)
-        .json({ message: "Bạn không có quyền sửa bình luận này." });
-    }
-
-    if (comment !== undefined) existingComment.comment = comment;
-    if (rating !== undefined) existingComment.rating = rating;
-
-    await existingComment.save();
-    req.io
-      .to(existingComment.book.toString())
-      .emit("comment-updated", existingComment);
-
-    res.json({
-      success: true,
-      message: "Cập nhật bình luận thành công.",
-      comment: existingComment,
-    });
-  } catch (err) {
-    res.status(500).json({ message: "Lỗi server khi cập nhật bình luận." });
+    const io = req.app.get("io") || req.io;
+    const result = await commentService.updateComment(
+      req.user.id,
+      req.params.id,
+      req.body,
+      io
+    );
+    return res.status(200).json(result);
+  } catch (error) {
+    return handleError(res, error);
   }
 };
 
 exports.toggleComment = async (req, res) => {
   try {
-    const commentId = req.params.id;
-    const comment = await Comment.findById(commentId);
-
-    if (!comment)
-      return res.status(404).json({ message: "Không tìm thấy bình luận." });
-
-    comment.is_hidden = !comment.is_hidden;
-    await comment.save();
-
-    res.json({
-      success: true,
-      message: `Đã ${comment.is_hidden ? "ẩn" : "hiện"} bình luận.`,
-      is_hidden: comment.is_hidden,
-    });
-  } catch (err) {
-    res.status(500).json({ message: "Lỗi server khi ẩn/hiện bình luận." });
+    const io = req.app.get("io") || req.io;
+    const result = await commentService.toggleComment(
+      req.user.role,
+      req.params.id,
+      io
+    );
+    return res.status(200).json(result);
+  } catch (error) {
+    return handleError(res, error);
   }
 };
 
 exports.deleteComment = async (req, res) => {
   try {
-    const commentId = req.params.id;
-    const comment = await Comment.findByIdAndDelete(commentId);
-    if (req.user.role !== "admin" && comment.user.toString() !== req.user.id)
-      return res
-        .status(403)
-        .json({ message: "Bạn không có quyền xóa bình luận." });
-
-    const book = comment.book.toString();
-    await comment.deleteOne();
-
-    req.io.to(book).emit("comment-deleted", { id: commentId });
-
-    res.json({ success: true, message: "Đã xóa bình luận." });
-  } catch (err) {
-    res.status(500).json({ message: "Lỗi server khi xóa bình luận." });
+    const io = req.app.get("io") || req.io;
+    const result = await commentService.deleteComment(
+      req.user,
+      req.params.id,
+      io
+    );
+    return res.status(200).json(result);
+  } catch (error) {
+    return handleError(res, error);
   }
 };

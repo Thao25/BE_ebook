@@ -11,9 +11,11 @@ const reportRoutes = require("./routes/report");
 const chatRoutes = require("./routes/chat");
 const cors = require("cors");
 const path = require("path");
-const app = express();
+
 const http = require("http");
 const { Server } = require("socket.io");
+
+const app = express();
 const server = http.createServer(app);
 
 const io = new Server(server, {
@@ -23,6 +25,7 @@ const io = new Server(server, {
 });
 
 app.set("io", io);
+
 app.use((req, res, next) => {
   req.io = io;
   next();
@@ -31,15 +34,18 @@ app.use((req, res, next) => {
 io.on("connection", (socket) => {
   console.log("client connected", socket.id);
 
+  socket.on("send-message", (data) => {
+    io.emit("receive-message", data);
+  });
+
   // phòng chat riêng cho comment theo từng sách
   socket.on("join-book", (book) => {
     socket.join(book);
     console.log(`📚 Client ${socket.id} đã vào phòng sách ${book}`);
   });
 
-  // kênh chat chung
+  // kênh chat chung (di chuyển vào đây)
   socket.on("sendMessage", (msg) => {
-    // phát cho toàn bộ client (kênh chung)
     io.emit("newMessage", {
       socketId: socket.id,
       ...msg,
@@ -50,6 +56,7 @@ io.on("connection", (socket) => {
     console.log("client disconnected", socket.id);
   });
 });
+
 
 app.use(cors());
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
