@@ -18,7 +18,11 @@ exports.register = async(req, res) => {
 // Controller: chỉ uỷ quyền đăng nhập cho authService.
 exports.login = async(req, res) => {
     try {
-        const result = await authService.loginUser(req.body);
+        const result = await authService.loginUser(
+            req.body,
+            req.recordFailedAttempt,
+            req.clearFailedAttempts
+        );
         return res.status(200).json(result);
     } catch (error) {
         return handleError(res, error);

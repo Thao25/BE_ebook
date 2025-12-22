@@ -1,5 +1,6 @@
 const Comment = require("../models/comment");
 const AppError = require("../utils/error");
+const { sanitizeInput } = require("../utils/sanitize");
 
 const createComment = async (userId, payload, io) => {
   const { book, rating, comment } = payload;
@@ -7,11 +8,14 @@ const createComment = async (userId, payload, io) => {
     throw new AppError(400, "Thiếu thông tin sách.");
   }
 
+  // Sanitize comment content to prevent XSS
+  const sanitizedComment = comment ? sanitizeInput(comment) : comment;
+
   const newComment = await Comment.create({
     user: userId,
     book,
     rating,
-    comment,
+    comment: sanitizedComment,
   });
 
   await newComment.populate("user", "name avatar is_active role");
@@ -50,7 +54,7 @@ const updateComment = async (userId, commentId, payload, io) => {
   }
 
   const { comment, rating } = payload;
-  if (comment !== undefined) existingComment.comment = comment;
+  if (comment !== undefined) existingComment.comment = sanitizeInput(comment);
   if (rating !== undefined) existingComment.rating = rating;
 
   await existingComment.save();

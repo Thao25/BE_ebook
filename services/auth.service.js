@@ -32,17 +32,25 @@ const registerUser = async({ name, email, password, role }) => {
     };
 };
 
-const loginUser = async({ email, password }) => {
+const loginUser = async({ email, password }, recordFailedAttempt, clearFailedAttempts) => {
     if (!email || !password) {
         throw new AppError(400, "Email và mật khẩu là bắt buộc.");
     }
 
+    // Generic error message to prevent user enumeration
+    const genericError = new AppError(
+        400,
+        "Email hoặc mật khẩu không đúng."
+    );
+
     const user = await User.findOne({ email });
     if (!user) {
-        throw new AppError(400, "Email không tồn tại.");
+        if (recordFailedAttempt) recordFailedAttempt();
+        throw genericError;
     }
 
     if (!user.is_active) {
+        if (recordFailedAttempt) recordFailedAttempt();
         throw new AppError(
             403,
             "Tài khoản của bạn đã bị tạm khóa. Vui lòng liên hệ quản trị viên."
@@ -51,8 +59,12 @@ const loginUser = async({ email, password }) => {
 
     const isMatch = await comparePassword(password, user.password);
     if (!isMatch) {
-        throw new AppError(400, "Sai mật khẩu.");
+        if (recordFailedAttempt) recordFailedAttempt();
+        throw genericError;
     }
+
+    // Clear failed attempts on successful login
+    if (clearFailedAttempts) clearFailedAttempts();
 
     const accessToken = signAccessToken(user);
     const refreshToken = signRefreshToken(user);

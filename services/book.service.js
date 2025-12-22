@@ -1,6 +1,7 @@
 const Book = require("../models/book");
 const BookChapter = require("../models/bookChapter");
 const AppError = require("../utils/error");
+const { sanitizeInput } = require("../utils/sanitize");
 const { deleteFileIfExists } = require("../utils/file");
 const { decryptAES256GCM } = require("../utils/crypto");
 
@@ -9,8 +10,12 @@ const buildPublicUrl = (folder, filename) =>
 
 const createBook = async (payload, files, chapters = []) => {
   const { title, author, description, category } = payload;
+  const sanitizedTitle = sanitizeInput(title);
+  const sanitizedAuthor = sanitizeInput(author);
+  const sanitizedDescription = sanitizeInput(description);
+  const sanitizedCategory = sanitizeInput(category);
 
-  if (!title || !author || !category) {
+  if (!sanitizedTitle || !sanitizedAuthor || !sanitizedCategory) {
     throw new AppError(400, "Thiếu thông tin bắt buộc của sách.");
   }
 
@@ -18,11 +23,11 @@ const createBook = async (payload, files, chapters = []) => {
 
   // Chỉ lưu metadata + cover_url (ảnh bìa) + has_chapters.
   const newBook = await Book.create({
-    title,
-    author,
-    description,
+    title: sanitizedTitle,
+    author: sanitizedAuthor,
+    description: sanitizedDescription,
     cover_url: cover ? buildPublicUrl("books", cover.filename) : "",
-    category,
+    category: sanitizedCategory,
     has_chapters: Array.isArray(chapters) && chapters.length > 0,
   });
 
@@ -220,6 +225,29 @@ const getTopViewedBooks = async (limit = 5) => {
   return { success: true, data: topBooks };
 };
 
+const searchBooks = async (query) => {
+  if (!query || typeof query !== "string" || query.trim().length === 0) {
+    return { success: true, books: [] };
+  }
+
+  // Use Mongoose parameterized queries - safe from SQL injection
+  const searchRegex = new RegExp(query.trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i");
+  
+  const books = await Book.find({
+    is_active: true,
+    $or: [
+      { title: searchRegex },
+      { author: searchRegex },
+      { description: searchRegex },
+    ],
+  })
+    .populate("category", "name")
+    .sort({ createdAt: -1 })
+    .limit(50);
+
+  return { success: true, books };
+};
+
 module.exports = {
   createBook,
   getChaptersByBook,
@@ -234,5 +262,6 @@ module.exports = {
   deleteBook,
   getBooksByCategory,
   getTopViewedBooks,
+  searchBooks,
 };
 

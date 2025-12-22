@@ -3,6 +3,7 @@ const Book = require("../models/book");
 const BookChapter = require("../models/bookChapter");
 const AppError = require("../utils/error");
 const { deleteFileIfExists } = require("../utils/file");
+const { sanitizeInput } = require("../utils/sanitize");
 
 const createCategory = async ({ name }) => {
   if (!name) {
@@ -11,7 +12,7 @@ const createCategory = async ({ name }) => {
 
   let newCategory;
   try {
-    newCategory = await Category.create({ name });
+    newCategory = await Category.create({ name: sanitizeInput(name) });
   } catch (error) {
     if (error.code === 11000) {
       throw new AppError(400, "Category đã tồn tại");

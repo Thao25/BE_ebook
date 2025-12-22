@@ -72,6 +72,10 @@ app.use("/comment", commentRoutes);
 app.use("/report", reportRoutes);
 app.use("/chat", chatRoutes);
 
+// Global error handler - must be last
+const errorHandler = require("./middlewares/errorHandler.middleware");
+app.use(errorHandler);
+
 const PORT = process.env.PORT || 5000;
 
 mongoose

@@ -3,7 +3,7 @@ const bookService = require("../services/book.service");
 const handleError = (res, error) =>
   res
     .status(error.statusCode || 500)
-    .json({ message: error.message || "Lỗi server" });
+    .json({ message: error.message || "Lỗi " });
 
 // Controller: nhận req/res và uỷ quyền cho bookService xử lý tạo sách.
 const createBook = async (req, res) => {
@@ -128,6 +128,16 @@ const getTopViewedBooks = async (req, res) => {
   }
 };
 
+const searchBooks = async (req, res) => {
+  try {
+    const query = req.query.q || req.query.query || "";
+    const result = await bookService.searchBooks(query);
+    return res.status(200).json(result);
+  } catch (error) {
+    return handleError(res, error);
+  }
+};
+
 module.exports = {
   createBook,
   getAllBooks,
@@ -142,4 +152,5 @@ module.exports = {
   getBooksByCategory,
   getTopViewedBooks,
   getBookByIdNoView,
+  searchBooks,
 };
