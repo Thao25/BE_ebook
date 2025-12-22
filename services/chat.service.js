@@ -1,12 +1,53 @@
 const Message = require("../models/chat");
 const AppError = require("../utils/error");
+const { encryptMessage, decryptMessage } = require("../utils/chatCrypto");
+
+/**
+ * Decrypt message content if encrypted, otherwise return plaintext
+ * Handles backward compatibility with plaintext messages
+ */
+const decryptMessageContent = (message) => {
+  // If message has encryption fields, decrypt it
+  if (message.ciphertext && message.iv && message.authTag) {
+    try {
+      const decryptedContent = decryptMessage(
+        message.ciphertext,
+        message.iv,
+        message.authTag
+      );
+      return {
+        ...message.toObject(),
+        content: decryptedContent,
+        // Remove encryption fields from response
+        ciphertext: undefined,
+        iv: undefined,
+        authTag: undefined,
+      };
+    } catch (error) {
+      console.error("Failed to decrypt message:", error.message);
+      // Return message with error indicator or fallback to plaintext
+      return {
+        ...message.toObject(),
+        content: message.content || "[Không thể giải mã tin nhắn]",
+        ciphertext: undefined,
+        iv: undefined,
+        authTag: undefined,
+      };
+    }
+  }
+  // Backward compatibility: return plaintext message as-is
+  return message.toObject();
+};
 
 const getMessages = async () => {
   const messages = await Message.find()
     .populate("user", "fullName name profileImage avatar")
     .sort({ createdAt: -1 });
 
-  return { success: true, messages: messages.reverse() };
+  // Decrypt all messages before returning
+  const decryptedMessages = messages.map(decryptMessageContent);
+
+  return { success: true, messages: decryptedMessages.reverse() };
 };
 
 const sendMessage = async (userId, { content }, io) => {
@@ -14,17 +55,32 @@ const sendMessage = async (userId, { content }, io) => {
     throw new AppError(400, "Nội dung không được để trống");
   }
 
-  const message = await Message.create({ user: userId, content });
+  // Encrypt message content before saving
+  const encrypted = encryptMessage(content.trim());
+
+  // Create message with encrypted fields
+  const message = await Message.create({
+    user: userId,
+    ciphertext: encrypted.ciphertext,
+    iv: encrypted.iv,
+    authTag: encrypted.authTag,
+    // Do NOT store plaintext content
+  });
+
+  // Populate user info
   const populatedMsg = await message.populate(
     "user",
     "fullName name profileImage avatar"
   );
 
+  // Decrypt for Socket.io emission and response
+  const decryptedMsg = decryptMessageContent(populatedMsg);
+
   if (io) {
-    io.emit("newMessage", populatedMsg);
+    io.emit("newMessage", decryptedMsg);
   }
 
-  return { success: true, message: populatedMsg };
+  return { success: true, message: decryptedMsg };
 };
 
 module.exports = {

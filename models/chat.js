@@ -9,8 +9,21 @@ const chatSchema = new mongoose.Schema(
         },
         content: {
             type: String,
-            required: true,
             trim: true,
+            // Legacy field - kept for backward compatibility with plaintext messages
+        },
+        // Encryption fields for AES-256-GCM
+        ciphertext: {
+            type: String,
+            // Required only if message is encrypted
+        },
+        iv: {
+            type: String,
+            // Required only if message is encrypted
+        },
+        authTag: {
+            type: String,
+            // Required only if message is encrypted
         },
     },
     { timestamps: true }
