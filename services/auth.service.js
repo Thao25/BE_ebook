@@ -1,5 +1,6 @@
 const User = require("../models/user");
 const Token = require("../models/token");
+const bcrypt = require("bcrypt");
 const AppError = require("../utils/error");
 const { hashPassword, comparePassword } = require("../utils/password");
 const {
@@ -210,13 +211,22 @@ const forgotPassword = async({ email }) => {
         // Trả về 404 để khớp với code Android: if (response.code() == 404)
         throw new AppError(404, "Email không tồn tại trên hệ thống.");
     }
+    if (user.lockUntil && user.lockUntil > Date.now()) {
+        const timeLeft = Math.ceil((user.lockUntil - Date.now()) / 60000);
+        throw new AppError(403, `Tài khoản đang bị khóa do nhập sai nhiều lần. Thử lại sau ${timeLeft} phút.`);
+    }
 
     // 3. Tạo mã OTP
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    const hashedOtp = await bcrypt.hash(otp, 10);
 
     // 4. Lưu vào bảng PasswordReset
-    await PasswordReset.deleteMany({ email });
-    await PasswordReset.create({ email, otp });
+    await PasswordReset.deleteMany({ email: email.trim() });
+    await PasswordReset.create({
+        email: email.trim(),
+        otp: hashedOtp,
+        attempts: 0
+    });
 
     // 5. Logic gửi mail (Có thể dùng App Password của Gmail)
     const transporter = nodemailer.createTransport({
@@ -246,27 +256,56 @@ const forgotPassword = async({ email }) => {
 
 // Hàm xác thực OTP
 const verifyOTP = async({ email, otp }) => {
-    if (!email || !otp) {
-        throw new AppError(400, "Thiếu email hoặc mã OTP.");
+    if (!email || !otp) throw new AppError(400, "Thiếu email hoặc mã OTP.");
+
+    const emailTrim = email.trim();
+
+    // 1. Kiểm tra User và tình trạng khóa
+    const user = await User.findOne({ email: emailTrim });
+    if (!user) throw new AppError(404, "Người dùng không tồn tại.");
+
+    // Kiểm tra nếu tài khoản đang trong thời gian bị khóa
+    if (user.lockUntil && user.lockUntil > Date.now()) {
+        const timeLeft = Math.ceil((user.lockUntil - Date.now()) / 60000);
+        throw new AppError(403, `Tài khoản đang bị khóa. Vui lòng thử lại sau ${timeLeft} phút.`);
     }
 
-    // Quan trọng: Trim email và ép kiểu otp về string để so sánh chính xác
-    const record = await PasswordReset.findOne({
-        email: email.trim(),
-        otp: otp.toString().trim()
-    });
+    // 2. Tìm bản ghi OTP trong database
+    const record = await PasswordReset.findOne({ email: emailTrim });
+    if (!record) throw new AppError(400, "Mã OTP không tồn tại hoặc hết hạn.");
 
-    if (!record) {
-        // Log ra để debug trên terminal xem server đang tìm gì
-        console.log(`Kiểm tra thất bại: Email [${email}] OTP [${otp}]`);
-        throw new AppError(400, "Mã OTP không chính xác hoặc đã hết hạn.");
+    // 3. So sánh mã OTP (Bcrypt compare)
+    const isMatch = await bcrypt.compare(otp.toString(), record.otp);
+
+    if (!isMatch) {
+        // Tăng số lần thử sai (attempts) thêm 1
+        const updated = await PasswordReset.findOneAndUpdate({ email: emailTrim }, { $inc: { attempts: 1 } }, { new: true });
+
+        console.log(">>> Số lần thử hiện tại:", updated.attempts);
+
+        // 4. Xử lý khi sai quá 3 lần
+        if (updated.attempts >= 3) {
+            console.log(">>> ĐANG THỰC HIỆN KHÓA TÀI KHOẢN...");
+            const lockTime = Date.now() + 15 * 60 * 1000; // Khóa 15 phút
+
+            await User.updateOne({ email: emailTrim }, { $set: { lockUntil: lockTime } });
+
+            // Xóa mã OTP để bắt buộc xin mã mới sau khi hết khóa
+            await PasswordReset.deleteOne({ email: emailTrim });
+
+            throw new AppError(403, "Sai quá 3 lần. Tài khoản của bạn đã bị khóa 15 phút!");
+        }
+
+        // Trả về thông báo kèm số lần còn lại (Đã gộp lại)
+        const remaining = 3 - updated.attempts;
+        throw new AppError(400, `Mã OTP không chính xác. Bạn còn ${remaining} lần thử.`);
     }
 
-    // Lưu ý: Không nên xóa mã ngay lập tức nếu bạn muốn dùng email này ở bước reset mật khẩu
-    // Hoặc nếu xóa, hãy đảm bảo bước Reset mật khẩu không cần check lại OTP nữa
+    // 5. Nếu đúng mã: Xóa trạng thái khóa (nếu có) để người dùng đổi pass
+    await User.updateOne({ email: emailTrim }, { $set: { lockUntil: null } });
+
     return { message: "Xác thực OTP thành công." };
 };
-
 // Hàm đặt lại mật khẩu mới
 const resetPassword = async({ email, newPassword }) => {
     if (!email || !newPassword) {
